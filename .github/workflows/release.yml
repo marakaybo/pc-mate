@@ -52,6 +52,10 @@ jobs:
     name: Установщик Windows
     needs: version
     runs-on: windows-latest
+    env:
+      # Секрет кладём в переменную задачи: в условии `if` у шага
+      # контекст secrets недоступен, а env — доступен.
+      CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,10 +78,9 @@ jobs:
       # Подпись кода необязательна: без неё SmartScreen будет предупреждать при
       # первом запуске. Если у вас есть сертификат — положите его в секреты.
       - name: Подпись установщика
-        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+        if: env.CERT_BASE64 != ''
         shell: pwsh
         env:
-          CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
           CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: |
           $certPath = "$env:RUNNER_TEMP\cert.pfx"
