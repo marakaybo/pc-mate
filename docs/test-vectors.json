@@ -1,0 +1,50 @@
+{
+  "note": "Сгенерировано tools/gen-test-vectors.mjs (node:crypto). Проверяется тестами агента и мобильного приложения.",
+  "protocolVersion": 1,
+  "x25519": {
+    "pcPrivate": "dwdtCnMYpX08FsFyUbJmRd9ML4frwJkqsXf7pR25LCo",
+    "pcPublic": "hSDwCYkwp1R0i33ctD73Wg2_Og0mOBr066SpjqqbTmo",
+    "phonePrivate": "XasIfmJKikt54X-Lg4AO5m87sSkmGLb9HC-LJ_-I4Os",
+    "phonePublic": "3p7bfXt9wbTTW2HC7OQ1Nz-DQ8hbeGdNrfx-FG-IK08",
+    "sharedSecret": "Sl2dW6TOLeFyjjv0gDUPJeB-IclH0Z4zdvCbPB4WF0I"
+  },
+  "hkdf": {
+    "pairId": "6f1c2a54-1f0e-4b07-9a60-0a2b7f5c1d33",
+    "infoPhoneToPc": "pcmate/v1/phone->pc",
+    "infoPcToPhone": "pcmate/v1/pc->phone",
+    "keyPhoneToPc": "BoKVvGsCl5kJ6ZGVDF3Vh6sox8O4noGSMBDSYViaSco",
+    "keyPcToPhone": "5kZz-lElEMElgPKBx0XFZcI1WhhTm4Nbxo-NGbF1Kis"
+  },
+  "fingerprints": {
+    "pair": "3MMQ-TVVA-90TB-EFVS-7R73-TDQT",
+    "pcKey": "084W-ZSFH-Q1GR"
+  },
+  "aesGcm": {
+    "envelope": {
+      "v": 1,
+      "id": "2f8a1c44-0b6e-4c1f-9d33-77e0a5b41c92",
+      "type": "cmd",
+      "from": "c0ffee00-1111-2222-3333-444455556666",
+      "to": "deadbeef-aaaa-bbbb-cccc-ddddeeeeffff",
+      "ts": 1757894400
+    },
+    "payload": {
+      "cmd": "power.shutdown",
+      "args": {
+        "delaySec": 30,
+        "force": false
+      },
+      "nonce": "QUJDREVGR0hJSktMTU5PUA",
+      "ts": 1757894400
+    },
+    "aad": "1|2f8a1c44-0b6e-4c1f-9d33-77e0a5b41c92|c0ffee00-1111-2222-3333-444455556666|deadbeef-aaaa-bbbb-cccc-ddddeeeeffff|1757894400",
+    "nonce": "AAECAwQFBgcICQoL",
+    "cipher": "96XXyO30-EYDyionRZK1TmHWTyp4IUxY9LfZNoDHt1WLPTS6fee0wcI-_PXrHgilt3SdM25Rwjp-Kcuj6_c11v_1p3fep7HMo7jn1ri3_quELobFT33C5xuoMyTj60BUnbILQGhueVO0KcGbYJ5eE2PlKk-LLYX04irfrcV4",
+    "plaintextJson": "{\"cmd\":\"power.shutdown\",\"args\":{\"delaySec\":30,\"force\":false},\"nonce\":\"QUJDREVGR0hJSktMTU5PUA\",\"ts\":1757894400}"
+  },
+  "magicPacket": {
+    "mac": "AA:BB:CC:DD:EE:FF",
+    "lengthBytes": 102,
+    "firstBytesHex": "ffffffffffffaabbccddeeff"
+  }
+}

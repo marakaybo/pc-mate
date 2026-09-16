@@ -1,0 +1,51 @@
+# PC MATE — развёртывание сервера-ретранслятора одной командой:
+#   cp .env.example .env && docker compose up -d
+#
+# TLS: Caddy получает сертификат Let's Encrypt автоматически.
+# Укажите свой домен в .env (PCMATE_DOMAIN), домен должен указывать на этот сервер.
+
+services:
+  relay:
+    build: .
+    image: pcmate-server:1.0.0
+    container_name: pcmate-relay
+    restart: unless-stopped
+    environment:
+      PCMATE_PORT: 8080
+      PCMATE_DB: /data/pcmate.db
+      PCMATE_LOG_LEVEL: ${PCMATE_LOG_LEVEL:-info}
+      PCMATE_ALLOW_REGISTRATION: ${PCMATE_ALLOW_REGISTRATION:-true}
+      PCMATE_REGISTRATION_SECRET: ${PCMATE_REGISTRATION_SECRET:-}
+    volumes:
+      - relay-data:/data
+    expose:
+      - "8080"
+    networks:
+      - pcmate
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: pcmate-caddy
+    restart: unless-stopped
+    depends_on:
+      - relay
+    environment:
+      PCMATE_DOMAIN: ${PCMATE_DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - pcmate
+
+volumes:
+  relay-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  pcmate:
+    driver: bridge

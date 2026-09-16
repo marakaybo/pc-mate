@@ -1,0 +1,289 @@
+name: Release
+
+# Выпуск по тегу: git tag v1.0.0 && git push --follow-tags
+#
+# Собирает установщик Windows и APK, считает контрольные суммы и складывает
+# всё в GitHub Release. Магазин приложений не используется — файлы отсюда и
+# есть единственный способ распространения.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия без v, например 1.0.1'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+  DOTNET_NOLOGO: 1
+
+jobs:
+  version:
+    name: Версия выпуска
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.resolve.outputs.version }}
+      tag: ${{ steps.resolve.outputs.tag }}
+    steps:
+      - id: resolve
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+
+          if ! echo "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Версия должна быть вида 1.2.3, получено: $VERSION"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Версия выпуска: $VERSION"
+
+  windows:
+    name: Установщик Windows
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Тесты
+        working-directory: agent
+        run: dotnet test tests/PcMate.Core.Tests/PcMate.Core.Tests.csproj -c Release --nologo
+
+      - name: Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Сборка установщика
+        working-directory: agent
+        shell: pwsh
+        run: ./build.ps1 -Version ${{ needs.version.outputs.version }}
+
+      # Подпись кода необязательна: без неё SmartScreen будет предупреждать при
+      # первом запуске. Если у вас есть сертификат — положите его в секреты.
+      - name: Подпись установщика
+        if: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+        shell: pwsh
+        env:
+          CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $certPath = "$env:RUNNER_TEMP\cert.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:CERT_BASE64))
+
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match 'x64' } | Select-Object -First 1 -ExpandProperty FullName
+
+          & $signtool sign /f $certPath /p $env:CERT_PASSWORD /fd SHA256 `
+            /tr http://timestamp.digicert.com /td SHA256 `
+            "agent\dist\PcMate-Setup-${{ needs.version.outputs.version }}.exe"
+
+          Remove-Item $certPath -Force
+          # Контрольную сумму считаем заново: подпись меняет файл.
+          $exe = "agent\dist\PcMate-Setup-${{ needs.version.outputs.version }}.exe"
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  $(Split-Path -Leaf $exe)" | Out-File "$exe.sha256" -Encoding ascii -NoNewline
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer
+          path: |
+            agent/dist/*.exe
+            agent/dist/*.sha256
+          retention-days: 7
+
+  android:
+    name: APK для Android
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Зависимости
+        working-directory: mobile
+        run: npm install --no-audit --no-fund
+
+      - name: Тесты и типы
+        working-directory: mobile
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Проставить версию
+        run: node tools/set-version.mjs ${{ needs.version.outputs.version }}
+
+      - name: Подставить репозиторий для проверки обновлений
+        working-directory: mobile
+        run: |
+          node -e "
+            const fs = require('fs');
+            const app = JSON.parse(fs.readFileSync('app.json', 'utf8'));
+            const [owner, repo] = '${{ github.repository }}'.split('/');
+            app.expo.extra = app.expo.extra || {};
+            app.expo.extra.github = { owner, repo };
+            fs.writeFileSync('app.json', JSON.stringify(app, null, 2) + '\n');
+            console.log('Проверка обновлений указывает на', owner + '/' + repo);
+          "
+
+      - name: Нативный проект Android
+        working-directory: mobile
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Сборка APK
+        working-directory: mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Подпись своим ключом
+        id: sign
+        working-directory: mobile
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APK=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          echo "Собран: $APK"
+
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "::warning::Секрет ANDROID_KEYSTORE_BASE64 не задан — APK подписан отладочным ключом."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            cp "$APK" "PcMate-${{ needs.version.outputs.version }}-debug-signed.apk"
+            echo "apk=PcMate-${{ needs.version.outputs.version }}-debug-signed.apk" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          echo "build-tools: $BUILD_TOOLS"
+
+          "$BUILD_TOOLS/zipalign" -f -p 4 "$APK" "$RUNNER_TEMP/aligned.apk"
+
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$RUNNER_TEMP/release.jks" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "PcMate-${{ needs.version.outputs.version }}.apk" \
+            "$RUNNER_TEMP/aligned.apk"
+
+          "$BUILD_TOOLS/apksigner" verify --print-certs "PcMate-${{ needs.version.outputs.version }}.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
+
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+          echo "apk=PcMate-${{ needs.version.outputs.version }}.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Контрольная сумма
+        working-directory: mobile
+        run: sha256sum "${{ steps.sign.outputs.apk }}" > "${{ steps.sign.outputs.apk }}.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: |
+            mobile/*.apk
+            mobile/*.apk.sha256
+          retention-days: 7
+
+  publish:
+    name: Публикация выпуска
+    needs: [version, windows, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Собрать файлы и суммы
+        id: collect
+        run: |
+          mkdir -p release
+          find artifacts -type f \( -name '*.exe' -o -name '*.apk' \) -exec cp {} release/ \;
+          ls -la release
+
+          {
+            echo 'checksums<<CHECKSUMS_EOF'
+            cd release && sha256sum * | awk '{printf "| `%s` | `%s` |\n", $2, $1}'
+            echo 'CHECKSUMS_EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Заметки к выпуску
+        run: |
+          VERSION="${{ needs.version.outputs.version }}"
+          cat > release-notes.md <<NOTES
+          ## PC MATE $VERSION
+
+          ### Установка
+
+          **Компьютер (Windows 10/11):** скачайте \`PcMate-Setup-$VERSION.exe\` и запустите.
+          Установщик сам поставит службу, добавит правило брандмауэра и при необходимости
+          загрузит .NET 8 Desktop Runtime.
+
+          > При первом запуске Windows SmartScreen предупредит о неизвестном издателе —
+          > установщик не подписан сертификатом. Нажмите «Подробнее» → «Выполнить в любом случае».
+          > Сверьте контрольную сумму из таблицы ниже, чтобы убедиться, что файл не подменили.
+
+          **Телефон (Android 8+):** скачайте \`PcMate-$VERSION.apk\` и откройте его.
+          Android попросит разрешить установку из этого источника — это нормально для
+          приложений не из магазина.
+
+          Подробная инструкция: [docs/setup-guide.md](https://github.com/${{ github.repository }}/blob/$GITHUB_REF_NAME/docs/setup-guide.md)
+
+          ### Контрольные суммы SHA-256
+
+          | Файл | SHA-256 |
+          |---|---|
+          ${{ steps.collect.outputs.checksums }}
+
+          Проверить в PowerShell:
+          \`\`\`powershell
+          Get-FileHash .\PcMate-Setup-$VERSION.exe -Algorithm SHA256
+          \`\`\`
+          NOTES
+
+          cat release-notes.md
+
+      - name: Создать выпуск
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          name: PC MATE ${{ needs.version.outputs.version }}
+          body_path: release-notes.md
+          files: release/*
+          generate_release_notes: true
+          draft: false
+          prerelease: false

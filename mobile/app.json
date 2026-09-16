@@ -1,0 +1,78 @@
+{
+  "expo": {
+    "name": "PC MATE",
+    "slug": "pcmate",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "pcmate",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#11151F",
+    "primaryColor": "#2176FF",
+    "newArchEnabled": true,
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#11151F"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.pcmate.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Камера нужна, чтобы отсканировать QR-код с компьютера и подключить его.",
+        "NSLocalNetworkUsageDescription": "Доступ к локальной сети нужен, чтобы включать компьютер из домашнего Wi-Fi и управлять им без интернета.",
+        "NSFaceIDUsageDescription": "Вход в приложение по биометрии.",
+        "NSBonjourServices": [
+          "_pcmate._tcp"
+        ]
+      },
+      "buildNumber": "10000"
+    },
+    "android": {
+      "package": "com.pcmate.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#11151F",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.INTERNET",
+        "android.permission.ACCESS_NETWORK_STATE",
+        "android.permission.ACCESS_WIFI_STATE",
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
+        "android.permission.VIBRATE",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.USE_BIOMETRIC"
+      ],
+      "versionCode": 10000
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Камера нужна, чтобы отсканировать QR-код с компьютера."
+        }
+      ],
+      "expo-secure-store",
+      "expo-local-authentication"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      },
+      "github": {
+        "owner": "marakaybo",
+        "repo": "pc-mate"
+      }
+    }
+  }
+}

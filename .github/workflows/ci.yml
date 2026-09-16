@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  agent:
+    name: Агент Windows (.NET 8)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Сборка
+        working-directory: agent
+        run: dotnet build PcMate.sln --configuration Release --nologo
+
+      - name: Тесты
+        working-directory: agent
+        run: dotnet test tests/PcMate.Core.Tests/PcMate.Core.Tests.csproj --configuration Release --nologo --verbosity normal
+
+      - name: Публикация службы и помощника
+        working-directory: agent
+        run: |
+          dotnet publish src/PcMate.Agent.Service/PcMate.Agent.Service.csproj -c Release -r win-x64 --self-contained false -o publish --nologo
+          dotnet publish src/PcMate.Agent.Tray/PcMate.Agent.Tray.csproj -c Release -r win-x64 --self-contained false -o publish --nologo
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pcmate-agent
+          path: agent/publish
+          retention-days: 14
+
+  server:
+    name: Сервер-ретранслятор (Node.js)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package.json
+
+      - name: Установка зависимостей
+        working-directory: server
+        run: npm install --no-audit --no-fund
+
+      - name: Проверка типов
+        working-directory: server
+        run: npm run typecheck
+
+      - name: Тесты
+        working-directory: server
+        run: npm test
+
+      - name: Сборка
+        working-directory: server
+        run: npm run build
+
+  mobile:
+    name: Приложение (React Native)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package.json
+
+      - name: Установка зависимостей
+        working-directory: mobile
+        run: npm install --no-audit --no-fund
+
+      - name: Проверка типов
+        working-directory: mobile
+        run: npm run typecheck
+
+      - name: Тесты совместимости протокола
+        working-directory: mobile
+        run: npm test
+
+  vectors:
+    name: Векторы протокола совпадают
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Пересчитать векторы
+        run: node tools/gen-test-vectors.mjs
+
+      - name: Убедиться, что они не разошлись с зафиксированными
+        run: |
+          if ! git diff --exit-code docs/test-vectors.json; then
+            echo "::error::Тестовые векторы изменились. Проверьте криптографию и зафиксируйте новый файл."
+            exit 1
+          fi
+
+  bridge:
+    name: Мост (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Зависимости
+        run: pip install websockets
+
+      - name: Проверка синтаксиса и логики
+        working-directory: bridge/linux
+        run: |
+          python -m py_compile pcmate_bridge.py
+          python - <<'PY'
+          import importlib.util, sys
+          spec = importlib.util.spec_from_file_location('bridge', 'pcmate_bridge.py')
+          module = importlib.util.module_from_spec(spec)
+          sys.modules['bridge'] = module
+          spec.loader.exec_module(module)
+
+          packet = module.build_magic_packet('AA:BB:CC:DD:EE:FF')
+          assert len(packet) == 102
+          assert packet[:6] == b'\xff' * 6
+          assert packet[6:12] == bytes.fromhex('aabbccddeeff')
+          assert module.http_base('wss://relay.example.com/ws') == 'https://relay.example.com'
+          assert module.ws_url('https://relay.example.com', 'T') == 'wss://relay.example.com/ws?token=T'
+          print('мост: проверки пройдены')
+          PY

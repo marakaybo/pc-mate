@@ -1,0 +1,53 @@
+# ---- .NET ----
+[Bb]in/
+[Oo]bj/
+*.user
+*.suo
+.vs/
+agent/publish/
+agent/dist/
+mobile/*.apk
+mobile/*.aab
+*.binlog
+
+# ---- Node ----
+node_modules/
+dist/
+*.tsbuildinfo
+npm-debug.log*
+yarn-error.log*
+
+# ---- Expo / React Native ----
+.expo/
+.expo-shared/
+android/
+ios/
+*.jks
+*.keystore
+*.base64.txt
+*.pfx
+*.p12
+google-services.json
+GoogleService-Info.plist
+
+# ---- Сервер ----
+server/data/
+server/.env
+*.db
+*.db-wal
+*.db-shm
+
+# ---- PlatformIO ----
+bridge/esp32/.pio/
+bridge/esp32/.vscode/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+
+# ---- Локальное ----
+.DS_Store
+Thumbs.db
+*.local
+.idea/

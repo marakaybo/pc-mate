@@ -1,0 +1,29 @@
+# PC MATE — обратный прокси с автоматическим TLS.
+# Домен задаётся переменной PCMATE_DOMAIN в .env.
+
+{$PCMATE_DOMAIN} {
+	encode zstd gzip
+
+	# WebSocket и HTTP API идут на один и тот же порт контейнера relay.
+	reverse_proxy relay:8080 {
+		header_up X-Real-IP {remote_host}
+		# Соединения агента и моста живут долго — не рвём их по таймауту.
+		transport http {
+			read_timeout 0
+			write_timeout 0
+		}
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

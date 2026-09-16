@@ -1,0 +1,31 @@
+# PC MATE — мост пробуждения (systemd).
+#
+#   sudo cp pcmate-bridge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now pcmate-bridge
+
+[Unit]
+Description=PC MATE wake bridge
+Documentation=https://github.com/pcmate
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/pcmate/pcmate_bridge.py --config /etc/pcmate/bridge.json
+Restart=always
+RestartSec=5
+User=pcmate
+Group=pcmate
+
+# Мосту нужен только широковещательный UDP — остальное закрываем.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/etc/pcmate
+CapabilityBoundingSet=CAP_NET_BROADCAST
+AmbientCapabilities=CAP_NET_BROADCAST
+
+[Install]
+WantedBy=multi-user.target

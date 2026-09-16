@@ -1,0 +1,24 @@
+# Единые переводы строк: в репозитории LF, на Windows — как удобно системе.
+* text=auto eol=lf
+
+# Windows-скрипты должны оставаться с CRLF и BOM, иначе PowerShell 5.1
+# читает кириллицу как ANSI и ломается на разборе файла.
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+*.bat   text eol=crlf
+
+# Файлы Inno Setup компилятор ждёт в CRLF.
+*.iss   text eol=crlf
+
+# Двоичные — не трогать.
+*.png   binary
+*.ico   binary
+*.bmp   binary
+*.jks   binary
+*.keystore binary
+*.apk   binary
+*.exe   binary
+
+# Для GitHub: язык проекта определяется по коду, а не по документации.
+docs/**       linguist-documentation
+*.md          linguist-documentation
